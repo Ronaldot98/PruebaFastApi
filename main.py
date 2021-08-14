@@ -10,62 +10,56 @@ import urllib
 
 import asyncpg
 
-DATABASE_URL ="postgres://pzsbfexuianiou:72e2cd5f08245fdc65c758eae904b86d7137018368ee2a679b86ad823438389f@ec2-52-23-40-80.compute-1.amazonaws.com:5432/ddbm715pljbgk1"
 
+DATABASE_URL = "postgres://fshtyhhiulhtzg:97424b89fbbd6064e6ae2b3e1ed2d2a1f6b71262564d8e95f5e39f2100f81854@ec2-34-194-130-103.compute-1.amazonaws.com:5432/d7hinhs2mfl3om"
 
-host_server = os.environ.get('host_server','localhost')
-db_server_port= urllib.parse.quote_plus(str(os.environ.get('db_server_port','5432')))
-database_naherme= os.environ.get('database_name','fastapi')
-db_username= urllib.parse.quote_plus(str(os.environ.get('db_username','postgres')))
-db_password= urllib.parse.quote_plus(str(os.environ.get('db_password','1234')))
-ssl_mode= urllib.parse.quote_plus(str(os.environ.get('ssl_mode','prefer')))
+#creacion de variables para establecer la conexion a la base de datos 
+host_server = os.environ.get('host_server', 'localhost')
+db_server_port = urllib.parse.quote_plus(str(os.environ.get('db_server_port', '5432')))
+database_name = os.environ.get('database_name', 'fastapi')  
+db_username = urllib.parse.quote_plus(str(os.environ.get('db_username', 'postgres')))
+db_password = urllib.parse.quote_plus(str(os.environ.get('db_password', '1234')))
+ssl_mode = urllib.parse.quote_plus(str(os.environ.get('ssl_mode','prefer')))
 
-#DATABASE_URL= 'postgresql://{}:{}@{}:{}/{}?sslmode={}'.format(db_username,db_password,host_server,db_server_port,database_name,ssl_mode)
+#se establece la conexion
+#DATABASE_URL = 'postgresql://{}:{}@{}:{}/{}?sslmode={}'.format(db_username, db_password, host_server, db_server_port, database_name, ssl_mode)
+
+database = databases.Database(DATABASE_URL)
 
 metadata = sqlalchemy.MetaData()
 
-
-empleado = sqlalchemy.Table(
-    'empleado',
+notes = sqlalchemy.Table(
+    "notes",
     metadata,
-    sqlalchemy.Column("id",sqlalchemy.Integer,primary_key=True),
-    sqlalchemy.Column("nombre",sqlalchemy.String),
-    sqlalchemy.Column("apellido",sqlalchemy.String),
-    sqlalchemy.Column("status",sqlalchemy.Boolean),
+    sqlalchemy.Column("id", sqlalchemy.Integer, primary_key=True),
+    sqlalchemy.Column("text", sqlalchemy.String),
+    sqlalchemy.Column("completed", sqlalchemy.Boolean),
 )
 
 engine = sqlalchemy.create_engine(
-    DATABASE_URL,pool_size=3, max_overflow=0
+    #DATABASE_URL, connect_args={"check_same_thread": False}
+    DATABASE_URL, pool_size=3, max_overflow=0
 )
 metadata.create_all(engine)
 
+class NoteIn(BaseModel):
+    text: str
+    completed: bool
 
-
-class EmpleadoIn(BaseModel):
-    nombre:str
-    apellido:str
-    status: bool
-
-class Empleado(BaseModel):
+class Note(BaseModel):
     id: int
-    nombre:str
-    apellido:str
-    status: bool
+    text: str
+    completed: bool
 
-
-
-
-app = FastAPI(title="FAST API UMG ")
+app = FastAPI(title="REST API UMG")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"]
 )
-
-
-database = databases.Database(DATABASE_URL)
+app.add_middleware(GZipMiddleware)
 
 @app.on_event("startup")
 async def startup():
@@ -73,37 +67,34 @@ async def startup():
 
 @app.on_event("shutdown")
 async def shutdown():
-    await database.disconnet()
+    await database.disconnect()
 
-@app.post("/empleados/",response_model=Empleado)
-async def create_empleado(emp:EmpleadoIn):
-    query= empleado.insert().values(nombre=emp.nombre,apellido=emp.apellido, status=emp.status)
-    
-    last_record_id =await database.execute(query)
-    return {**emp.dict(), "id":last_record_id}
+@app.post("/notes/", response_model=Note, status_code = status.HTTP_201_CREATED)
+async def crear_notas(note: NoteIn):
+    query = notes.insert().values(text=note.text, completed=note.completed)
+    last_record_id = await database.execute(query)
+    return {**note.dict(), "id": last_record_id}
 
-@app.get("/getEmpleado/",response_model=List[Empleado] )
-async def getEmpleado(skip: int=0, take: int=20):
-    query= empleado.select().offset(skip).limit(take)
+@app.put("/notes/{note_id}/", response_model=Note, status_code = status.HTTP_200_OK)
+async def actualizar_notas(note_id: int, payload: NoteIn):
+    query = notes.update().where(notes.c.id == note_id).values(text=payload.text, completed=payload.completed)
+    await database.execute(query)
+    return {**payload.dict(), "id": note_id}
+
+@app.get("/notes/", response_model=List[Note], status_code = status.HTTP_200_OK)
+async def read_notes(skip: int = 0, take: int = 20):
+    query = notes.select().offset(skip).limit(take)
     return await database.fetch_all(query)
 
-
-
-@app.get("/getEmpleado/{empleado_id}",response_model=Empleado)
-async def getEmpleadoId(emp_id: int ):
-    query= empleado.select().where(empleado.c.id==emp_id  )
+@app.get("/notes/{note_id}/", response_model=Note, status_code = status.HTTP_200_OK)
+async def read_notes(note_id: int):
+    query = notes.select().where(notes.c.id == note_id)
     return await database.fetch_one(query)
 
-@app.delete("/empleadoDelete/{empleado_id}/")
-async def del_empleado(emp_id: int):
-    query = empleado.delete().where(empleado.c.id==emp_id)
+@app.delete("/notes/{note_id}/", status_code = status.HTTP_200_OK)
+async def eliminar_notas(note_id: int):
+    query = notes.delete().where(notes.c.id == note_id)
     await database.execute(query)
-    return {"message":" Empleado with id:{} deleted succesfully!".format(emp_id)}
-
-@app.put("/empleadoUpdate/{emp_id}",response_model=Empleado)
-async def setEmpleadoId(emp_id: int,emp:EmpleadoIn):
-    query = empleado.update().where(empleado.c.id==emp_id).values(nombre=emp.nombre, apellido=emp.apellido,status=emp.status)
-    await database.execute(query)
-    return {**emp.dict(),"id":emp_id}
+    return {"message": "Note with id: {} deleted successfully!".format(note_id)}
 
 
