@@ -1,13 +1,14 @@
-import urllib
-import os
-
-import sqlalchemy
-from pydantic import BaseModel
-import databases
-from databases import *
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from typing import List
+import databases
+import sqlalchemy
+from fastapi import FastAPI, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from pydantic import BaseModel
+import os
+import urllib
+
+import asyncpg
 
 DATABASE_URL ="postgres://pzsbfexuianiou:72e2cd5f08245fdc65c758eae904b86d7137018368ee2a679b86ad823438389f@ec2-52-23-40-80.compute-1.amazonaws.com:5432/ddbm715pljbgk1"
 
